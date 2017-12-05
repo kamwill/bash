@@ -1,0 +1,242 @@
+#!/bin/bash
+
+Width=`tput lines`
+Height=`tput cols`
+
+
+
+function draw()
+{
+        echo -en "\033[s" #remeber position
+        tput cup $1 $2 #go to (x,y)
+        echo -en "\033[1;31m$3\033[0m"
+        echo -en "\033[u" #restore position
+}
+
+function maxRead()
+{
+
+	max_value=0;
+	for i in {1..10}
+		do
+			read_value=$(awk -v var=$i 'NR==var' readed.log)
+		
+			if ((read_value>max_value))
+			then
+				max_value=$read_value
+			fi
+
+	done
+	
+	echo $max_value
+}
+
+function maxWrite()
+{
+	max_value=0;
+	for i in {1..10}
+		do
+			write_value=$(awk -v var=$i 'NR==var' written.log)
+			
+			if ((write_value>max_value))
+			then
+				max_value=$write_value
+			fi
+
+	done
+	
+	echo $max_value
+}
+
+function maxCpu()
+{
+	max_value=0;
+	for i in {1..10}
+		do
+			write_value=$(awk -v var=$i 'NR==var' cpu.log)
+			
+				
+
+
+			if (( $(echo "$write_value > $max_value" |bc -l) ))
+			then
+				max_value=$write_value
+			fi
+
+	done
+	
+	echo 8
+}
+
+function stars()
+{
+var=""
+
+	for (( c=1; c<=$1; c++ ))
+	do  
+	   var+="*"
+
+	done
+printf "$var"
+}
+
+function print_kb_mb()
+{
+	if (($1<2))
+	then
+		tmp=$(($1*512))
+		printf "$tmp b/s"
+		
+	else
+		if (($1<2048))
+		then
+			tmp=$(($1/2))
+			printf "$tmp kb/s"
+		else
+			tmp=$(($1/2048))
+			printf "$tmp Mb/s"
+		fi
+	fi	
+}
+
+
+data_start=$(cat /proc/diskstats | grep "sda " | sed -e 's/  */ /g'| cut -f5- -d" ")
+
+
+while true
+do 
+
+#Odczyt danych z diskstats i loadavg
+	sleep 1
+	data_cpu=$(cat /proc/loadavg |cut -f1 -d" ")
+	data_stop=$(cat /proc/diskstats | grep "sda " | sed -e 's/  */ /g' | cut -f5- -d" ")
+
+	readed_start=$(echo $data_start | cut -f3 -d" ")
+	readed_stop=$(echo $data_stop | cut -f3 -d" ")
+	readed_sectors=$((readed_stop - readed_start))
+
+	written_start=$(echo $data_start | cut -f7 -d" ")
+	written_stop=$(echo $data_stop | cut -f7 -d" ")
+	written_sectors=$((written_stop - written_start))
+	
+#Zapisywanie danych do pliku
+
+	file_lines=$(wc -l <written.log)
+
+	if (($file_lines > 9))
+	then
+		tail -n 9 written.log>temp.txt
+		mv temp.txt written.log
+	fi
+	
+	
+	file_lines=$(wc -l <readed.log)
+
+	if (($file_lines > 9))
+	then
+		tail -n 9 readed.log>temp.txt
+		mv temp.txt readed.log
+	fi
+
+	file_lines=$(wc -l <cpu.log)
+
+	if (($file_lines > 9))
+	then
+		tail -n 9 cpu.log>temp.txt
+		mv temp.txt cpu.log
+	fi
+
+	echo $written_sectors >> written.log
+
+	echo $readed_sectors >> readed.log
+	
+	echo $data_cpu >> cpu.log
+
+
+	read_value=$(print_kb_mb $readed_sectors)
+	write_value=$(print_kb_mb $written_sectors)
+	
+#Rysuj graf
+	tput civis&clear 
+	printf "zapis $read_value" 
+	tput cup 0 30
+	printf "odczyt $write_value" 
+	tput cup 0 60
+	printf "CPU (1 min) $cpu_value"
+	
+	read_max=$(maxRead);
+	read_kb_max=$(echo "scale=2; $read_max/2" | bc)
+	
+	write_max=$(maxWrite);
+	write_kb_max=$(echo "scale=2; $write_max/2" | bc)
+
+
+	for (( i=1; i<=$file_lines; i++ ))
+	do
+		read_value=$(awk -v var=$i 'NR==var' readed.log)
+		write_value=$(awk -v var=$i 'NR==var' written.log)
+		cpu_value=$(awk -v var=$i 'NR==var' cpu.log)
+		
+		read_kb=$(($read_value/2)) 
+		write_kb=$(($write_value/2))
+		
+		if( ((read_value!=0)) )
+		then
+			read_graph_blocks=$((read_value*15/read_max))
+		else
+			read_graph_blocks=$read_value
+		fi
+		
+		if( ((write_value!=0)) )
+		then
+			write_graph_blocks=$((write_value*15/write_max))
+
+		else
+			write_graph_blocks=$write_value
+		fi
+		
+		tmp=$(echo "scale=2; $cpu_value*15" | bc)
+		tmpp=$(echo "scale=2; $tmp/8" | bc)
+		temp=$(echo "$tmpp>=1" | bc)
+		if (($temp==1))
+		then
+			int=${tmp%.*}
+			cpu_graph_blocks=${tmpp%.*}
+		else
+			cpu_graph_blocks=0
+		fi
+		#printf "tmp: $tmp tmpp: $tmpp $read_graph_blocks $write_graph_blocks $cpu_graph_blocks"
+		#sleep 1
+		
+#Drukuj zapis
+		tput cup $i 0
+		stars $read_graph_blocks
+		tput cup $i 17
+		printf "$read_kb kB/s"
+		tput cup $i 30
+		stars $write_graph_blocks
+		tput cup $i 47
+		printf "$write_kb kB/s"
+		tput cup $i 60
+		stars $cpu_graph_blocks
+		#stars 0
+		tput cup $i 76
+		printf "$cpu_value"
+		
+		
+	done
+
+	#echo -e "\nreaded sectors: $readed_sectors \nwritten sectors: $written_sectors"
+	
+	data_start=$data_stop
+	
+done
+
+
+
+
+
+
+
+
+

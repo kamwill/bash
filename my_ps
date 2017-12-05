@@ -1,0 +1,22 @@
+#!/bin/bash
+#find /proc -maxdepth 1 -name '*[[:digit:]]' 
+
+printf "PID \t PPID \t STAT \t NAME \n" >>zad2.log
+
+
+for i in $(find /proc -maxdepth 1 -name '*[[:digit:]]')
+do 
+	
+	Pid=$(cat $i/status | grep -h -m 1 "Pid:" | cut -f2)
+	
+	PPid=$(cat $i/status | grep -h "PPid:" | cut -f2)
+	
+	Stat=$(cat $i/status | grep -h "Stat" | cut -f2 | cut -f1 -d ' ')
+	
+	Name=$(cat $i/status | grep -h "Name" | cut -f2)
+	
+	printf "$Pid \t $PPid \t $Stat \t $Name\n">>zad2.log
+done
+
+cat<zad2.log
+rm zad2.log
